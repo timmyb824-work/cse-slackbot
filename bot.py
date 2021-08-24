@@ -292,6 +292,9 @@ def handle_submission(ack, body, client, view, logger):
 
     response = requests.post('https://api.opsgenie.com/v2/alerts', headers=headers, data=data)
 
+    # to see the request body
+    # print(response.request.body)
+
     # Message to send user
     msg = ""
     try:
@@ -306,6 +309,12 @@ def handle_submission(ack, body, client, view, logger):
         client.chat_postMessage(channel=user, text=msg)
     except e:
         logger.exception(f"Failed to post a message {e}")
+
+	# Another handling of the message to send user
+    # if response.status_code == 202:
+    #     msg = f"Your submission of \"{alert_message}\" to {alert_team} was successful!"
+    # else:
+    #     msg = "There was an error with your submission"
 
 # Terminal kept indicating an unhandled request and suggested I use this listener function
 # Upon review this handles the response message back from opsgenie when the alert is created
