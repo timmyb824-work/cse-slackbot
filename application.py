@@ -1,4 +1,4 @@
-import os, requests, json
+import os, requests, json, logging
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -49,13 +49,49 @@ def open_modal(ack, body, client):
 			}
 		},
 		{
+			"type": "context",
+			"elements": [
+				{
+					"type": "plain_text",
+					"text": "Briefly summarize the problem"
+				}
+			]
+		},
+		{
 			"type": "input",
-			"block_id": "input_team",
+			"block_id": "input_details",
 			"element": {
-				"type": "static_select",
+				"type": "plain_text_input",
+				"multiline": True,
+				"action_id": "plain_text_input-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "Additional Details"
+			}
+		},
+		{
+			"type": "context",
+			"elements": [
+				{
+					"type": "plain_text",
+					"text": "Add additional details like a link to the Slack or Zoom discussion. Please put 'none' for no other details."
+				}
+			]
+		},
+		{
+			"type": "section",
+			"block_id": "input_team",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*Team*"
+			},
+			"accessory": {
+				"action_id": "multi_static_select-action",
+				"type": "multi_static_select",
 				"placeholder": {
 					"type": "plain_text",
-					"text": "Select an item"
+					"text": "Select Team(s) to receive the alert"
 				},
 				"options": [
 					{
@@ -92,13 +128,6 @@ def open_modal(ack, body, client):
 							"text": "App_QA"
 						},
 						"value": "App_QA"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "ClientApps_Team"
-						},
-						"value": "ClientApps_Team"
 					},
 					{
 						"text": {
@@ -247,25 +276,22 @@ def open_modal(ack, body, client):
 						},
 						"value": "WebApp"
 					}
-				],
-				"action_id": "static_select-action"
-			},
-			"label": {
-				"type": "plain_text",
-				"text": "Team"
-			}
-		}
+				]
+		    }
+        }
 	]
 }
     )
 
 # Handles the view_submission request
 @app.view("view_1")
-def handle_submission(ack, body, client, view, logger):
+def handle_submission(ack, body, client, view, logger, error):
     alert_message = view["state"]["values"]["input_message"]["plain_text_input-action"]["value"]
-    alert_team = view["state"]["values"]["input_team"]["static_select-action"]["selected_option"]["value"]
-    user = body["user"]["id"]
-    api_key = os.environ.get('OPSGENIE_INTEGRATION_KEY')
+    alert_team = view["state"]["values"]["input_team"]["multi_static_select-action"]["selected_options"]
+    alert_details = view["state"]["values"]["input_details"]["plain_text_input-action"]["value"]
+    user_id = body["user"]["id"]
+    user = body["user"]["name"]
+    opsgenie_api_key = os.environ.get('OPSGENIE_INTEGRATION_KEY')
 
     # Acknowledge the view_submission request and closes the modal
     ack()
@@ -273,18 +299,24 @@ def handle_submission(ack, body, client, view, logger):
     # Do whatever you want with the input data - here we're using the input data to send a create alert request to opsgenie
 	# then sending the user a verification of their submission
 
+    # Loop through the selected teams
+    alert_responders = []
+    for value in alert_team:
+        alert_responders.append({
+            'name': value['value'],
+            'type': 'team'
+        })
+
 	#api requests to opsgenie
     headers = {
-		'Authorization': f'GenieKey {api_key}',
+		'Authorization': f'GenieKey {opsgenie_api_key}',
 		'Content-Type': 'application/json',
 		}
 
     data = {
-	'message': alert_message,
-	'responders': [{
-		'name': alert_team,
-		'type': 'team'
-	}],
+	'message': f'{alert_message} - {user}',
+	'description': alert_details,
+	'responders': alert_responders,
 	'priority': 'P1'
 	}
 
@@ -292,34 +324,41 @@ def handle_submission(ack, body, client, view, logger):
 
     response = requests.post('https://api.opsgenie.com/v2/alerts', headers=headers, data=data)
 
-    # to see the request body
-    # print(response.request.body)
+    # Add simple logging to track the success/failure of the requests
+    logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+    logging.info(f'Opsgenie API request returned an http status code {response.status_code}')
 
     # Message to send user
-    msg = ""
     try:
-        # Save to DB
-        msg = f"Your submission of \"{alert_message}\" to {alert_team} was successful!"
+        if response.status_code == 202:
+            msg = f"Hey {user}, your Opsgenie submission was successful!"
+        else:
+            msg = "There was a problem sending your request"
     except Exception as e:
-        # Handle error
         msg = "There was an error with your submission"
 
     # Message the user
     try:
-        client.chat_postMessage(channel=user, text=msg)
-    except e:
+        client.chat_postMessage(channel=user_id, text=msg)
+    except Exception as e:
         logger.exception(f"Failed to post a message {e}")
 
-	# Another handling of the message to send user
-    # if response.status_code == 202:
-    #     msg = f"Your submission of \"{alert_message}\" to {alert_team} was successful!"
-    # else:
-    #     msg = "There was an error with your submission"
 
-# Terminal kept indicating an unhandled request and suggested I use this listener function
-# Upon review this handles the response message back from opsgenie when the alert is created
+# Handles messages sent in a channel the bot is listening in that are not already handled above
 @app.event("message")
 def handle_message_events(body, logger):
+    logger.info(body)
+
+# Handles view event not already handled above
+@app.view("view_1")
+def handle_view_events(ack, body, logger):
+    ack()
+    logger.info(body)
+
+# Handles multi select options event
+@app.action("multi_static_select-action")
+def handle_some_action(ack, body, logger):
+    ack()
     logger.info(body)
 
 # Start your app
