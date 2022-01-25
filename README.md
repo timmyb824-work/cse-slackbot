@@ -19,3 +19,7 @@ Three environement variables must be set to authenticate the bot:
 - `SLACK_BOT_TOKEN` - Slack bot token
 - `SLACK_APP_TOKEN` - Slack app token
 - `OPSGENIE_INTEGRATION_KEY` - Opsgenie integration API key
+
+## Testing
+
+Add this to push a change and test something
