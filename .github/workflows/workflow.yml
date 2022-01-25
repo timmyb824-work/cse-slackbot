@@ -1,4 +1,4 @@
-name: Deploy csebot
+name: Deploy csebot with codedeploy
 
 on:
   push:
