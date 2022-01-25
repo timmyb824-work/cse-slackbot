@@ -1,4 +1,2 @@
 #!/bin/bash
-cd /home/ec2-user/cse-slackbot
-git pull
-pm2 restart test.config.js
+pm2 restart /home/ec2-user/cse-slackbot/test.config.js

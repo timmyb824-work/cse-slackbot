@@ -25,3 +25,4 @@ jobs:
           --application-name csebot \
           --deployment-group-name csebot-deployment \
           --deployment-config-name CodeDeployDefault.OneAtATime \
+          --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
